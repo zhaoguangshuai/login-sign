@@ -619,5 +619,5 @@ def process_accounts(excel_path: str):
 
 
 if __name__ == "__main__":
-    EXCEL_PATH = "/Users/zhaoguangshuai/py/login-sign/login-info1.xlsx"
+    EXCEL_PATH = "/Users/zhaoguangshuai/py/login-sign/login-info.xlsx"
     process_accounts(EXCEL_PATH)

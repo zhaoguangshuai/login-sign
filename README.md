@@ -1,6 +1,6 @@
 # login-sign
 
-批量自动登录签到工具，基于 Playwright 浏览器自动化 + Clash Verge 代理节点轮换，实现多账号自动登录并完成每日签到。
+批量自动登录签到工具，基于 Playwright 浏览器自动化 + Clash Verge 代理节点轮换，实现多账号自动登录、每日签到以及令牌自动管理。
 
 ## 功能特性
 
@@ -8,6 +8,9 @@
 - **Turnstile 验证**：自动等待 Cloudflare Turnstile 人机验证通过
 - **智能检测**：同时检测页面跳转和 Toast 消息，精准判断登录/失败/限流状态
 - **限流自动重试**：检测到「请求次数过多」时自动切换代理节点并重试（最多 2 次）
+- **令牌自动管理**：签到后自动检测用户令牌列表，为空时自动创建并写入 Excel
+  - 自动创建 `特价-Codex-plus` 和 `awsq` 两个分组的令牌
+  - 获取完整 key 并拼接 `sk-` 前缀后写入 Excel
 - **Clash Verge 代理轮换**：
   - 按地区轮询切换节点（香港 → 台灣 → 獅城 → 日本 → 美國 → 澳門 → 英國 → 德國）
   - 同一地区内随机选取，不重复使用同一节点
@@ -18,12 +21,12 @@
 
 ```
 login-sign/
-├── login.py              # 主脚本：批量登录签到
+├── login.py              # 主脚本：批量登录签到 + 令牌管理
 ├── clash_proxy.py        # Clash Verge 代理节点切换工具
-├── login-info.xlsx       # 账号数据（需自行准备）
-├── old-login.py          # 旧版脚本备份（不使用代理）
-├── README.md
-└── proxy_pool/           # 备用免费代理池项目（已弃用）
+├── login-info.xlsx       # 账号数据文件
+├── login-info1.xlsx      # 账号数据文件
+├── .gitignore
+└── README.md
 ```
 
 ## 环境要求
@@ -35,7 +38,7 @@ login-sign/
 ### Python 依赖
 
 ```bash
-pip install playwright pandas requests
+pip install playwright pandas requests openpyxl
 playwright install chromium
 ```
 
@@ -45,9 +48,14 @@ playwright install chromium
 
 创建 `login-info.xlsx`，包含以下列：
 
-| 账号 | 密码 |
-|------|------|
-| your_username | your_password |
+| 账号 | 密码 | awsq-key-claude | codex-plus-key-gpt | 维护人 |
+|------|------|-----------------|--------------------|--------|
+| your_username | your_password | （留空，脚本自动填充） | （留空，脚本自动填充） | |
+
+- **账号 / 密码**：必填
+- **awsq-key-claude**：脚本自动写入 `awsq` 分组令牌 key（带 `sk-` 前缀）
+- **codex-plus-key-gpt**：脚本自动写入 `特价-Codex-plus` 分组令牌 key（带 `sk-` 前缀）
+- **维护人**：可选
 
 ### 2. 配置 Clash Verge
 
@@ -92,6 +100,24 @@ SECRET = "your_secret"                 # API 鉴权密钥
 DEFAULT_GROUP = "GLOBAL"               # 代理组名称
 ```
 
+## 令牌管理机制
+
+签到成功后（无论是新签到还是今日已签到），脚本会自动执行令牌管理流程：
+
+```
+签到成功
+  └─ 获取用户令牌列表
+       ├─ 已有令牌 → 跳过（处理下一个用户）
+       └─ 无令牌 → 创建两个令牌
+            ├─ 特价-Codex-plus（name=随机4字母）
+            ├─ awsq（name=随机4字母）
+            ├─ 重新获取令牌列表获取 ID
+            ├─ 获取每个令牌的完整 key
+            └─ 写入 Excel：
+                 特价-Codex-plus → codex-plus-key-gpt 列 (sk-xxx)
+                 awsq           → awsq-key-claude 列 (sk-xxx)
+```
+
 ## 代理节点轮换策略
 
 脚本采用**按地区轮询**策略，避免同一地区的 IP 被频繁使用：
@@ -116,7 +142,7 @@ DEFAULT_GROUP = "GLOBAL"               # 代理组名称
 | 登录时检测到「请求次数过多」 | 紧急切换到另一个未使用节点，等待 5 秒后重试 |
 | 签到请求 HTTP 错误 | 紧急切换节点 |
 
-## 登录流程
+## 完整流程
 
 ```
 启动
@@ -135,6 +161,10 @@ DEFAULT_GROUP = "GLOBAL"               # 代理组名称
       ├── 限流时切换节点重试（最多 2 次）
       ├── 获取 Session Cookie
       ├── 调用签到 API
+      ├── 令牌管理
+      │   ├── 获取令牌列表
+      │   ├── 无令牌时自动创建并进行写入 Excel
+      │   └── 已有令牌则跳过
       ├── 关闭浏览器
       └── 等待 1 秒后处理下一个
 ```
@@ -161,12 +191,12 @@ python3 clash_proxy.py delay "🇭🇰 香港 01"
 ## 输出示例
 
 ```
-共读取到 36 个账号
+共读取到 4 个账号
 [Clash] 代理节点自动切换已启用（随机不重复）
-[Clash] 初始节点: 🇭🇰 香港 02
+[Clash] 初始节点: 🇭🇰 香港 05
 
 ==================================================
-处理账号 [1/36]: zhoujiabao
+处理账号 [1/4]: zhoujiabao
 ==================================================
 正在通过浏览器登录...
 正在加载登录页面...
@@ -180,8 +210,31 @@ python3 clash_proxy.py delay "🇭🇰 香港 01"
 检测到已进入控制台，登录成功！
 用户ID: 2558
 ✅ 登录成功
-用户ID: 2558
 ⚠️ 签到结果: 今日已签到
+正在获取令牌列表...
+✅ 已有 3 个令牌，跳过创建
+等待 1 秒后处理下一个账号...
+
+==================================================
+处理账号 [2/4]: 一路向北
+==================================================
+正在通过浏览器登录...
+✅ 登录成功
+用户ID: 3030
+✅ 签到成功: 签到成功
+正在获取令牌列表...
+令牌列表为空，正在创建令牌...
+正在创建 特价-Codex-plus 令牌 (name=xzrn)...
+✅ 特价-Codex-plus 令牌创建成功
+正在创建 awsq 令牌 (name=tacw)...
+✅ awsq 令牌创建成功
+正在获取最新令牌列表...
+正在获取令牌 key (ID=4656, group=awsq)...
+获取到 key: 3oMVd... 写入: sk-3oMVd...
+✅ 已将 awsq 令牌 key 保存到 awsq-key-claude 列
+正在获取令牌 key (ID=4655, group=特价-Codex-plus)...
+获取到 key: 012ij... 写入: sk-012ij...
+✅ 已将 特价-Codex-plus 令牌 key 保存到 codex-plus-key-gpt 列
 等待 1 秒后处理下一个账号...
 ```
 
