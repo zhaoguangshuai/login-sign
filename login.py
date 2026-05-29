@@ -1,6 +1,7 @@
 import json
 import time
 import random
+import string
 from datetime import datetime
 
 import pandas as pd
@@ -264,6 +265,133 @@ def get_user_id_from_session(session_cookie: str) -> int:
         raise Exception(f"获取用户信息失败: {data.get('message')}")
 
 
+def get_token_list(session_cookie: str, user_id: int) -> list:
+    """获取用户的令牌列表"""
+    url = "https://cdn.xiavier.com/api/token/?p=1&size=10"
+    headers = {
+        "accept": "application/json, text/plain, */*",
+        "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7,zh-HK;q=0.6",
+        "cache-control": "no-store",
+        "new-api-user": str(user_id),
+        "priority": "u=1, i",
+        "referer": "https://cdn.xiavier.com/console/token",
+        "sec-ch-ua": '"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"macOS"',
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-origin",
+        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+    }
+    session = requests.Session()
+    session.cookies.set("session", session_cookie)
+
+    resp = session.get(url, headers=headers)
+    resp.raise_for_status()
+    data = resp.json()
+    if data.get("success"):
+        return data["data"]["items"]
+    else:
+        raise Exception(f"获取令牌列表失败: {data.get('message')}")
+
+
+def create_token(session_cookie: str, user_id: int, name: str, group: str) -> dict:
+    """创建令牌"""
+    url = "https://cdn.xiavier.com/api/token/"
+    headers = {
+        "accept": "application/json, text/plain, */*",
+        "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7,zh-HK;q=0.6",
+        "cache-control": "no-store",
+        "content-type": "application/json",
+        "new-api-user": str(user_id),
+        "origin": "https://cdn.xiavier.com",
+        "priority": "u=1, i",
+        "referer": "https://cdn.xiavier.com/console/token",
+        "sec-ch-ua": '"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"macOS"',
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-origin",
+        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+    }
+    payload = {
+        "remain_quota": 0,
+        "remain_amount": 0,
+        "expired_time": -1,
+        "unlimited_quota": True,
+        "model_limits_enabled": False,
+        "model_limits": "",
+        "cross_group_retry": False,
+        "name": name,
+        "group": group,
+        "allow_ips": "",
+    }
+    session = requests.Session()
+    session.cookies.set("session", session_cookie)
+
+    resp = session.post(url, headers=headers, json=payload)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def get_token_key(session_cookie: str, user_id: int, token_id: int) -> str:
+    """获取指定令牌的具体 key 值"""
+    url = f"https://cdn.xiavier.com/api/token/{token_id}/key"
+    headers = {
+        "accept": "application/json, text/plain, */*",
+        "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7,zh-HK;q=0.6",
+        "cache-control": "no-store",
+        "content-length": "0",
+        "new-api-user": str(user_id),
+        "origin": "https://cdn.xiavier.com",
+        "priority": "u=1, i",
+        "referer": "https://cdn.xiavier.com/console/token",
+        "sec-ch-ua": '"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"macOS"',
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-origin",
+        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+    }
+    session = requests.Session()
+    session.cookies.set("session", session_cookie)
+
+    resp = session.post(url, headers=headers)
+    resp.raise_for_status()
+    data = resp.json()
+    if data.get("success"):
+        return data["data"]["key"]
+    else:
+        raise Exception(f"获取令牌 key 失败: {data.get('message')}")
+
+
+def save_token_to_excel(excel_path: str, username: str, group: str, token_key: str):
+    """将令牌 key 保存到 Excel 文件对应的列中"""
+    df = pd.read_excel(excel_path)
+
+    if group == "特价-Codex-plus":
+        column = "codex-plus-key-gpt"
+    elif group == "awsq":
+        column = "awsq-key-claude"
+    else:
+        print(f"⚠️ 未知的令牌分组: {group}，跳过保存")
+        return
+
+    # 确保列类型为 object（否则全是 NaN 时 dtype 为 float64，写入字符串会失败）
+    if column in df.columns:
+        df[column] = df[column].astype(object)
+
+    mask = df['账号'] == username
+    if mask.any():
+        df.loc[mask, column] = token_key
+        df.to_excel(excel_path, index=False)
+        print(f"✅ 已将 {group} 令牌 key 保存到 {column} 列")
+    else:
+        print(f"⚠️ 未在 Excel 中找到账号 {username}，无法保存令牌 key")
+
+
 def process_accounts(excel_path: str):
     """批量处理账号登录和签到"""
     # 读取 Excel 文件
@@ -366,6 +494,63 @@ def process_accounts(excel_path: str):
                                 '失败原因': checkin_msg
                             })
 
+                    # ========== 令牌管理（无论签到为新成功还是已签到，均执行）==========
+                    try:
+                        print("正在获取令牌列表...")
+                        tokens = get_token_list(session_cookie, user_id)
+                        if tokens:
+                            print(f"✅ 已有 {len(tokens)} 个令牌，跳过创建")
+                        else:
+                            print("令牌列表为空，正在创建令牌...")
+
+                            # 创建 特价-Codex-plus 令牌
+                            name1 = ''.join(random.choices(string.ascii_lowercase, k=4))
+                            print(f"正在创建 特价-Codex-plus 令牌 (name={name1})...")
+                            r1 = create_token(session_cookie, user_id, name1, "特价-Codex-plus")
+                            if r1.get("success"):
+                                print("✅ 特价-Codex-plus 令牌创建成功")
+                            else:
+                                print(f"❌ 创建 特价-Codex-plus 令牌失败: {r1.get('message', '')}")
+
+                            # 创建 awsq 令牌
+                            name2 = ''.join(random.choices(string.ascii_lowercase, k=4))
+                            print(f"正在创建 awsq 令牌 (name={name2})...")
+                            r2 = create_token(session_cookie, user_id, name2, "awsq")
+                            if r2.get("success"):
+                                print("✅ awsq 令牌创建成功")
+                            else:
+                                print(f"❌ 创建 awsq 令牌失败: {r2.get('message', '')}")
+
+                            # 再次获取令牌列表获取 ID
+                            print("正在获取最新令牌列表...")
+                            tokens = get_token_list(session_cookie, user_id)
+                            if tokens:
+                                for token in tokens:
+                                    tid = token["id"]
+                                    tg = token["group"]
+                                    print(f"正在获取令牌 key (ID={tid}, group={tg})...")
+                                    try:
+                                        key = get_token_key(session_cookie, user_id, tid)
+                                        full_key = "sk-" + key
+                                        print(f"获取到 key: {key[:20]}..., 写入: {full_key[:25]}...")
+                                        save_token_to_excel(excel_path, username, tg, full_key)
+                                    except Exception as e:
+                                        print(f"❌ 获取/保存令牌 key 失败: {e}")
+                            else:
+                                print("❌ 创建后令牌列表仍为空")
+                    except Exception as e:
+                        print(f"❌ 令牌管理失败: {e}")
+                        checkin_msg = checkin_result.get("message", "签到失败")
+                        print(f"⚠️ 签到结果: {checkin_msg}")
+
+                        if "已签到" not in checkin_msg:
+                            failed_accounts.append({
+                                '账号': username,
+                                '密码': password,
+                                '失败类型': '签到失败',
+                                '失败原因': checkin_msg
+                            })
+
                 except requests.exceptions.HTTPError as e:
                     error_msg = f"签到请求失败: {e}"
                     print(f"❌ {error_msg}")
@@ -434,5 +619,5 @@ def process_accounts(excel_path: str):
 
 
 if __name__ == "__main__":
-    EXCEL_PATH = "/Users/zhaoguangshuai/py/login-sign/login-info.xlsx"
+    EXCEL_PATH = "/Users/zhaoguangshuai/py/login-sign/login-info1.xlsx"
     process_accounts(EXCEL_PATH)
