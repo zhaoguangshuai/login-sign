@@ -265,6 +265,39 @@ def get_user_id_from_session(session_cookie: str) -> int:
         raise Exception(f"获取用户信息失败: {data.get('message')}")
 
 
+def get_balance(session_cookie: str, user_id: int) -> float:
+    """查询账户余额（美元），基于 quota / 500000 计算"""
+    url = "https://cdn.xiavier.com/api/user/self"
+    headers = {
+        "accept": "application/json, text/plain, */*",
+        "accept-language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7,zh-HK;q=0.6",
+        "cache-control": "no-store",
+        "new-api-user": str(user_id),
+        "origin": "https://cdn.xiavier.com",
+        "priority": "u=1, i",
+        "referer": "https://cdn.xiavier.com/console/personal",
+        "sec-ch-ua": '"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"macOS"',
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-origin",
+        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+    }
+    session = requests.Session()
+    session.cookies.set("session", session_cookie)
+
+    resp = session.get(url, headers=headers)
+    resp.raise_for_status()
+    data = resp.json()
+    if data.get("success"):
+        quota = data["data"].get("quota", 0)
+        balance = round(quota / 500000, 2)
+        return balance
+    else:
+        raise Exception(f"查询余额失败: {data.get('message')}")
+
+
 def get_token_list(session_cookie: str, user_id: int) -> list:
     """获取用户的令牌列表"""
     url = "https://cdn.xiavier.com/api/token/?p=1&size=10"
@@ -414,6 +447,9 @@ def process_accounts(excel_path: str):
 
     # 记录失败的账号
     failed_accounts = []
+
+    # 记录每个账号的余额
+    balances = {}
 
     # 遍历每个账号进行登录和签到
     for index, row in accounts.iterrows():
@@ -574,6 +610,13 @@ def process_accounts(excel_path: str):
                         '失败原因': error_msg
                     })
 
+                try:
+                    balance = get_balance(session_cookie, user_id)
+                    balances[username] = balance
+                    print(f"💰 账号 {username} 当前余额: ${balance}")
+                except Exception as e:
+                    print(f"❌ 查询余额失败: {e}")
+
             else:
                 # 登录失败
                 login_msg = login_result.get("message", "登录失败")
@@ -615,6 +658,29 @@ def process_accounts(excel_path: str):
     else:
         print(f"\n{'='*50}")
         print("处理完成！所有账号均登录并签到成功")
+        print("="*50)
+
+    if balances:
+        stats_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"\n{'='*50}")
+        print(f"📊 账户余额统计（统计时间: {stats_time}）")
+        print("="*50)
+
+        special_account = "tniub.cc@gmail.com"
+        if special_account in balances:
+            print(f"🔑 {special_account} 余额: ${balances[special_account]}")
+        else:
+            print(f"🔑 {special_account}: 未查询到余额")
+
+        other_total = 0.0
+        other_count = 0
+        for acct, bal in balances.items():
+            if acct != special_account:
+                other_total += bal
+                other_count += 1
+
+        other_total = round(other_total, 2)
+        print(f"💰 其他 {other_count} 个账号总余额: ${other_total}")
         print("="*50)
 
 
