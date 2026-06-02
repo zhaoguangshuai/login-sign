@@ -615,7 +615,14 @@ def process_accounts(excel_path: str):
                     balances[username] = balance
                     print(f"💰 账号 {username} 当前余额: ${balance}")
                 except Exception as e:
-                    print(f"❌ 查询余额失败: {e}")
+                    error_msg = f"查询余额失败: {e}"
+                    print(f"❌ {error_msg}")
+                    failed_accounts.append({
+                        '账号': username,
+                        '密码': password,
+                        '失败类型': '查询余额失败',
+                        '失败原因': error_msg
+                    })
 
             else:
                 # 登录失败
