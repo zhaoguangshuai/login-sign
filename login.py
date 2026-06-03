@@ -693,7 +693,7 @@ def process_accounts(excel_path: str):
 
 
 if __name__ == "__main__":
-    EXCEL_PATH = "/Users/zhaoguangshuai/py/login-sign/login-info1.xlsx"
+    EXCEL_PATH = "/Users/zhaoguangshuai/py/login-sign/login-info.xlsx"
     try:
         if USE_CLASH_MODE_SWITCH:
             from clash_proxy import switch_to_global_mode
