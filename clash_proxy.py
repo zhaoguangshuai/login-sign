@@ -82,6 +82,34 @@ def switch_proxy(proxy_name: str, group_name: str = DEFAULT_GROUP) -> bool:
     return r.status_code == 204
 
 
+def get_proxy_mode() -> Optional[str]:
+    """获取当前 Clash 运行模式：rule / global / direct"""
+    r = requests.get(f"{CLASH_API}/configs", headers=HEADERS, timeout=5)
+    r.raise_for_status()
+    return r.json().get("mode")
+
+
+def set_proxy_mode(mode: str) -> bool:
+    """设置 Clash 运行模式，mode 可为 rule / global / direct"""
+    r = requests.patch(
+        f"{CLASH_API}/configs",
+        headers=HEADERS,
+        json={"mode": mode.lower()},
+        timeout=5,
+    )
+    return r.status_code == 204
+
+
+def switch_to_global_mode() -> bool:
+    """切换到全局模式"""
+    return set_proxy_mode("global")
+
+
+def switch_to_rule_mode() -> bool:
+    """切换到规则模式"""
+    return set_proxy_mode("rule")
+
+
 def get_proxy_delay(node_name: str, timeout_ms: int = 3000) -> int:
     """测试节点延迟（毫秒），超时或失败返回 9999"""
     try:
@@ -266,6 +294,14 @@ if __name__ == "__main__":
         elif cmd == "delay" and len(sys.argv) > 2:
             delay = get_proxy_delay(sys.argv[2])
             print(f"{sys.argv[2]}: {delay}ms")
+        elif cmd == "mode":
+            print(f"当前模式: {get_proxy_mode()}")
+        elif cmd == "global":
+            ok = switch_to_global_mode()
+            print(f"{'✅' if ok else '❌'} 切换到全局模式{'成功' if ok else '失败'}")
+        elif cmd == "rule":
+            ok = switch_to_rule_mode()
+            print(f"{'✅' if ok else '❌'} 切换到规则模式{'成功' if ok else '失败'}")
         else:
             print("用法:")
             print("  python clash_proxy.py list              # 列出所有节点")
@@ -273,6 +309,9 @@ if __name__ == "__main__":
             print("  python clash_proxy.py best              # 测速后切换到最优节点")
             print("  python clash_proxy.py next              # 切换到下一个优选节点")
             print("  python clash_proxy.py delay <节点名>     # 测试节点延迟")
+            print("  python clash_proxy.py mode              # 查看当前代理模式")
+            print("  python clash_proxy.py global            # 切换到全局模式")
+            print("  python clash_proxy.py rule              # 切换到规则模式")
     else:
         # 无参数：列出节点 → 测速 → 切换到最优
         print("=== Clash 节点自动切换 ===")

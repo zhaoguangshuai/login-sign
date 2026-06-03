@@ -10,6 +10,7 @@ from playwright.sync_api import sync_playwright
 
 # Clash 代理节点自动切换（可关闭）
 USE_CLASH_AUTO_SWITCH = True
+USE_CLASH_MODE_SWITCH = True  # 执行前切到全局，执行完成后切回规则
 CLASH_SWITCH_INTERVAL = 10  # 每处理 N 个账号切换一次节点
 CLASH_NODE_CANDIDATES = [
     "🇭🇰 香港 01", "🇭🇰 香港 02", "🇭🇰 香港 03", "🇭🇰 香港 04", "🇭🇰 香港 05",
@@ -692,5 +693,26 @@ def process_accounts(excel_path: str):
 
 
 if __name__ == "__main__":
-    EXCEL_PATH = "/Users/zhaoguangshuai/py/login-sign/login-info.xlsx"
-    process_accounts(EXCEL_PATH)
+    EXCEL_PATH = "/Users/zhaoguangshuai/py/login-sign/login-info1.xlsx"
+    try:
+        if USE_CLASH_MODE_SWITCH:
+            from clash_proxy import switch_to_global_mode
+
+            print("[Clash] 正在切换代理模式为全局...")
+            if not switch_to_global_mode():
+                raise RuntimeError("切换到全局模式失败")
+            print("[Clash] 已切换到全局模式")
+
+        process_accounts(EXCEL_PATH)
+    finally:
+        if USE_CLASH_MODE_SWITCH:
+            try:
+                from clash_proxy import switch_to_rule_mode
+
+                print("[Clash] 正在切换代理模式为规则...")
+                if switch_to_rule_mode():
+                    print("[Clash] 已切换到规则模式")
+                else:
+                    print("[Clash] 切换到规则模式失败")
+            except Exception as e:
+                print(f"[Clash] 切换到规则模式失败: {e}")
